@@ -1,0 +1,398 @@
+/*
+===============================================================================
+Database Exploration
+Purpose:
+    - To explore the structure of the database, including the list of tables and their schemas.
+    - To inspect the columns and metadata for specific tables.
+=============================================================================== */
+
+-- Explore All Objects in the Database
+SELECT * FROM INFORMATION_SCHEMA.TABLES
+
+-- Explore All Columns in the Database To Find Specific Table
+SELECT * 
+FROM INFORMATION_SCHEMA.COLUMNS
+WHERE TABLE_NAME = 'dim_customers'
+
+
+/*
+===============================================================================
+Dimensions Exploration
+Purpose:
+    - To explore the structure of dimension tables.
+	
+SQL Functions Used: DISTINCT, ORDER BY
+===============================================================================*/
+
+-- Explore All Countries our customers come from
+SELECT DISTINCT country
+FROM gold.dim_customers
+
+-- Explore All Categories "The Major Divisions"
+SELECT DISTINCT
+	category,
+	subcategory,
+	product_name
+FROM gold.dim_products
+ORDER BY category, subcategory, product_name;
+
+/*
+===============================================================================
+Date Range Exploration 
+Purpose:
+    - To determine the temporal boundaries of key data points.
+    - To understand the range of historical data.
+
+SQL Functions Used: MIN(), MAX(), DATEDIFF()
+===============================================================================*/
+
+-- Find the date of the first and last order
+-- How many years of sales are available
+SELECT
+	MIN(order_date) AS first_order,
+	MAX(order_date) AS last_order,
+	DATEDIFF(year, MIN(order_date), MAX(order_date)) AS years_apart 
+FROM gold.fact_sales
+
+-- Find the youngest and oldest customer
+SELECT
+	MIN(birthdate) AS oldest_age,
+	DATEDIFF(year,MIN(birthdate), GETDATE()) AS oldest_age,
+	MAX(birthdate) AS youngest_age,
+	DATEDIFF(year,MAX(birthdate), GETDATE()) AS youngest_age
+FROM gold.dim_customers
+
+
+/*
+===============================================================================
+Measures Exploration (Key Metrics)
+Purpose:
+    - To calculate aggregated metrics (e.g., totals, averages) for quick insights.
+    - To identify overall trends or spot anomalies.
+
+SQL Functions Used: COUNT(), SUM(), AVG()
+===============================================================================
+*/
+-- Find the Total Sales
+SELECT SUM(sales_amount) FROM gold.fact_sales AS total_sales
+
+-- Find how many items are sold
+SELECT SUM(quantity) AS total_sold FROM gold.fact_sales
+
+-- Find the average selling price
+SELECT AVG(ISNULL(price,0)) AS avg_price FROM gold.fact_sales
+
+-- Find the Total Number of Orders
+SELECT COUNT(DISTINCT order_number) AS total_orders  FROM gold.fact_sales
+
+-- Find the Total Number of Products
+SELECT COUNT(product_name) AS total_products FROM gold.dim_products
+
+-- Find the Total Number of Customers
+SELECT COUNT(*) AS total_customers FROM gold.dim_customers;
+
+-- Find the Total Number of Customers that have placed an order
+SELECT COUNT(DISTINCT customer_number) AS cust_with_order FROM gold.fact_sales
+
+-- Generate a Report that shows all key metrics of the business
+SELECT 'Total Sales' AS measure_name, SUM(sales_amount)AS measure_value FROM gold.fact_sales
+UNION ALL
+SELECT 'Total Quantity', SUM(quantity) FROM gold.fact_sales
+UNION ALL
+SELECT 'Average Price', AVG(price) FROM gold.fact_sales
+UNION ALL
+SELECT 'Total No. Orders', COUNT(DISTINCT order_number) FROM gold.fact_sales
+UNION ALL
+SELECT 'Total No. Products', COUNT(product_name) FROM gold.dim_products
+UNION ALL
+SELECT 'Total No. Customers', COUNT(customer_key) FROM gold.dim_customers
+
+
+/*
+===============================================================================
+Magnitude Analysis
+Purpose:
+    - To quantify data and group results by specific dimensions.
+    - For understanding data distribution across categories.
+
+SQL Functions Used:
+    - Aggregate Functions: SUM(), COUNT(), AVG()
+    - GROUP BY, ORDER BY
+===============================================================================
+*/
+-- Find total customers by countries
+SELECT
+	country,
+	COUNT(DISTINCT customer_key) AS total_customers
+FROM gold.dim_customers
+GROUP BY country
+ORDER BY total_customers DESC
+
+-- Find total customers by gender
+SELECT
+	gender,
+	COUNT(DISTINCT customer_key) AS total_customers
+FROM gold.dim_customers
+GROUP BY gender
+ORDER BY total_customers DESC
+
+-- Find total products by category
+SELECT
+	category,
+	COUNT(DISTINCT product_key) AS total_products
+FROM gold.dim_products
+GROUP BY category
+ORDER BY total_products DESC
+
+-- What is the average costs in each category?
+SELECT
+	category,
+	AVG(cost) AS avg_cost
+FROM gold.dim_products
+GROUP BY category
+ORDER BY avg_cost DESC
+
+-- What is the total revenue generated for each category?
+SELECT
+	p.category,
+	SUM(f.sales_amount) AS total_revenue
+FROM gold.fact_sales f
+LEFT JOIN gold.dim_products p
+ON p.product_key = f.product_number
+GROUP BY p.category
+ORDER BY total_revenue DESC
+
+-- Find the total revenue generated by each customer.
+SELECT
+	c.customer_key,
+	c.first_name,
+	c.last_name,
+	SUM(f.sales_amount) AS total_revenue
+FROM gold.fact_sales f
+LEFT JOIN gold.dim_customers c
+ON c.customer_key = f.customer_number
+GROUP BY 
+	c.customer_key,
+	c.first_name,
+	c.last_name
+ORDER BY total_revenue DESC
+
+-- What is the distribution of sold items across countries?
+SELECT
+	c.country,
+	SUM(f.quantity) AS total_quantity
+FROM gold.fact_sales f
+LEFT JOIN gold.dim_customers c
+ON c.customer_key = f.customer_number
+GROUP BY c.country
+ORDER BY total_quantity DESC
+
+
+/*
+===============================================================================
+Ranking Analysis
+Purpose:
+    - To rank items (e.g., products, customers) based on performance or other metrics.
+    - To identify top performers or laggards.
+
+SQL Functions Used:
+    - Window Ranking Functions: RANK(), DENSE_RANK(), ROW_NUMBER(), TOP
+    - Clauses: GROUP BY, ORDER BY
+=============================================================================== */
+
+-- Which 5 products generate the highest revenue
+SELECT TOP 5
+	p.product_name,
+	SUM(f.sales_amount) AS total_revenue
+FROM gold.fact_sales f
+LEFT JOIN gold.dim_products p
+ON p.product_key = f.product_number
+GROUP BY p.product_name
+ORDER BY total_revenue DESC
+
+-- What are the 5 worst performing products in terms of sales
+SELECT TOP 5
+	p.product_name,
+	SUM(f.sales_amount) AS total_revenue
+FROM gold.fact_sales f
+LEFT JOIN gold.dim_products p
+ON p.product_key = f.product_number
+GROUP BY p.product_name
+ORDER BY total_revenue
+
+-- Find the top 10 customers who have generated the highest revenue
+SELECT TOP 10
+	c.customer_key,
+	c.first_name,
+	c.last_name,
+	SUM(f.sales_amount) AS total_revenue
+FROM gold.fact_sales f
+LEFT JOIN gold.dim_customers c
+ON c.customer_key = f.customer_number
+GROUP BY 
+	c.customer_key,
+	c.first_name,
+	c.last_name
+ORDER BY total_revenue DESC
+
+-- Who are the 3 customers with the fewest orders placed
+SELECT TOP 3
+	c.customer_key,
+	c.first_name,
+	c.last_name,
+	COUNT(DISTINCT f.order_number) AS total_orders
+FROM gold.fact_sales f
+LEFT JOIN gold.dim_customers c
+ON c.customer_key = f.customer_number
+GROUP BY 
+	c.customer_key,
+	c.first_name,
+	c.last_name
+ORDER BY total_orders
+
+
+/*
+===============================================================================
+Change Over Time Analysis
+Purpose:
+    - To track trends, growth, and changes in key metrics over time.
+    - For time-series analysis and identifying seasonality.
+    - To measure growth or decline over specific periods.
+
+SQL Functions Used:
+    - Date Functions: DATEPART(), DATETRUNC(), FORMAT()
+    - Aggregate Functions: SUM(), COUNT(), AVG()
+===============================================================================
+*/
+-- Analyze the yearly performance of products by
+-- comparing each product's sales to both its average sales performance and the 
+-- previous year's sales
+SELECT
+	YEAR(order_date) AS order_year,
+	p.product_name,
+	SUM(f.sales_amount) AS total_sales,
+	AVG(SUM(f.sales_amount)) OVER (PARTITION BY p.product_name) AS avg_sales,
+	COALESCE(LAG(SUM(f.sales_amount)) OVER (PARTITION BY p.product_name ORDER BY YEAR(order_date)),0) AS previous_yr_sales
+FROM gold.fact_sales f
+LEFT JOIN gold.dim_products p
+ON p.product_key = f.product_number
+WHERE order_date IS NOT NULL
+GROUP BY p.product_name, YEAR(order_date), f.sales_amount
+ORDER BY p.product_name, YEAR(order_date)
+
+-- DATETRUNC()
+SELECT
+    DATETRUNC(month, order_date) AS order_date,
+    SUM(sales_amount) AS total_sales,
+    COUNT(DISTINCT customer_key) AS total_customers,
+    SUM(quantity) AS total_quantity
+FROM gold.fact_sales
+WHERE order_date IS NOT NULL
+GROUP BY DATETRUNC(month, order_date)
+ORDER BY DATETRUNC(month, order_date);
+
+-- FORMAT()
+SELECT
+    FORMAT(order_date, 'yyyy-MMM') AS order_date,
+    SUM(sales_amount) AS total_sales,
+    COUNT(DISTINCT customer_key) AS total_customers,
+    SUM(quantity) AS total_quantity
+FROM gold.fact_sales
+WHERE order_date IS NOT NULL
+GROUP BY FORMAT(order_date, 'yyyy-MMM')
+ORDER BY FORMAT(order_date, 'yyyy-MMM');
+
+/*
+===============================================================================
+Part-to-Whole Analysis
+===============================================================================
+Purpose:
+    - To compare performance or metrics across dimensions or time periods.
+    - To evaluate differences between categories.
+    - Useful for A/B testing or regional comparisons.
+
+SQL Functions Used:
+    - SUM(), AVG(): Aggregates values for comparison.
+    - Window Functions: SUM() OVER() for total calculations.
+===============================================================================*/
+-- Which categories contribute the most to overall sales?
+WITH cat_sales AS
+	(
+	SELECT
+		p.category AS category,
+		SUM(s.sales_amount) AS sales_amount
+	FROM gold.fact_sales s
+	LEFT JOIN gold.dim_products p
+	ON s.product_number = p.product_key
+	GROUP BY p.category
+	)
+SELECT
+	category,
+	sales_amount,
+	SUM(sales_amount) OVER() AS overall_total,
+	ROUND(
+		(CAST(sales_amount AS FLOAT)/SUM(sales_amount) OVER())*100,2) AS percent_contribution
+FROM cat_sales
+
+/*
+===============================================================================
+Data Segmentation Analysis
+Purpose:
+    - To group data into meaningful categories for targeted insights.
+    - For customer segmentation, product categorization, or regional analysis.
+
+SQL Functions Used:
+    - CASE: Defines custom segmentation logic.
+    - GROUP BY: Groups data into segments.
+===============================================================================*/
+-- Segment products into cost ranges and count how many products fall into each segment
+WITH cost_ranges AS
+(
+SELECT
+	product_key,
+	product_name,
+	cost,
+	CASE WHEN cost < 100 THEN 'Below 100'
+		 WHEN cost BETWEEN 100 AND 500 THEN '100-500'
+		 WHEN cost BETWEEN 500 AND 1000 THEN '500-1000'
+		 ELSE 'Above 1000'
+	END AS cost_group
+FROM gold.dim_products
+)
+SELECT 
+	cost_group,
+	COUNT(product_name) AS number_products
+FROM cost_ranges
+GROUP BY cost_group
+
+/*Group customers into 3 segments based on their spending behaviour:
+	- VIP: Customers with at least 12 months of history and spending more than $5,000.
+	- Regular: Customers with at least 12 months of history but spending $5,000 or less.
+	- New: Customers with a lifespan less than 12 months.
+And find the total number of customers by each group */
+WITH base_query AS (
+	SELECT
+		c.customer_key AS cust_key,
+		MIN(f.order_date) AS first_order,
+		MAX(f.order_date) AS last_order,
+		SUM(f.sales_amount) AS sales_amount,
+		DATEDIFF(month,MIN(f.order_date),MAX(f.order_date)) as month_history
+	FROM gold.fact_sales f
+	LEFT JOIN gold.dim_customers c
+	ON f.customer_number = c.customer_key
+	GROUP BY c.customer_key
+	)
+
+	SELECT
+		spend_behaviour,
+		COUNT(cust_key)
+	FROM(
+		SELECT
+		cust_key,
+		CASE WHEN month_history >= 12 AND sales_amount > 5000 THEN 'VIP'
+			 WHEN month_history >= 12 AND sales_amount <= 5000 THEN 'Regular'
+			 ELSE 'New'
+		END AS spend_behaviour
+		FROM base_query
+		)t
+	GROUP BY spend_behaviour
